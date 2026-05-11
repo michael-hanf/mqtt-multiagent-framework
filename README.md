@@ -2,7 +2,9 @@
 
 > Pub/Sub multi-agent coordination for Claude Code — using MQTT instead of HTTP.
 
-This framework lets multiple Claude Code agents communicate as a team over MQTT. Each agent subscribes to its own topic, discovers peers automatically via retained presence messages, and coordinates without a central orchestrator. It's built from a real working setup where three agents (development, infrastructure, coordination) collaborate on shared tasks daily.
+This framework lets multiple Claude Code agents communicate as a team over MQTT. Each agent runs as a separate Claude Code instance — on the same machine or across different machines — subscribes to its own topic, discovers peers automatically via retained presence messages, and coordinates without a central orchestrator.
+
+It's built from a real working setup where three agents (development, infrastructure, coordination) run on separate VMs and collaborate on shared tasks daily. Each agent has its own role, its own context, and its own strengths. The broker is the only shared infrastructure — agents don't need to know each other's addresses, platforms, or implementation details.
 
 **Why MQTT instead of HTTP?** → [`docs/WHY.md`](docs/WHY.md)  
 **Set it up:** → [`docs/infrastructure.md`](docs/infrastructure.md)  
