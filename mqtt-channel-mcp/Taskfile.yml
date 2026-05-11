@@ -1,0 +1,85 @@
+version: '3'
+
+vars:
+  BINARY: mqtt-channel-mcp
+
+tasks:
+  tidy:
+    desc: Download and tidy Go module dependencies
+    cmds:
+      - go mod tidy
+
+  build:
+    desc: Build for Linux (amd64)
+    deps: [tidy]
+    cmds:
+      - go build -o {{.BINARY}} .
+    generates:
+      - '{{.BINARY}}'
+
+  build:windows:
+    desc: Cross-compile for Windows (amd64)
+    deps: [tidy]
+    env:
+      GOOS: windows
+      GOARCH: amd64
+    cmds:
+      - go build -o {{.BINARY}}.exe .
+    generates:
+      - '{{.BINARY}}.exe'
+
+  build:all:
+    desc: Build for Linux and Windows
+    deps: [build, build:windows]
+
+  test:
+    desc: Run unit tests
+    deps: [tidy]
+    cmds:
+      - go test ./... -v -count=1
+
+  test:cover:
+    desc: Run tests with coverage report
+    deps: [tidy]
+    cmds:
+      - go test ./... -v -coverprofile=coverage.out
+      - go tool cover -func=coverage.out
+
+  deploy:linux:
+    desc: Build + signal Claude Code to restart mqtt-channel-mcp (MCP-managed process)
+    deps: [build]
+    cmds:
+      # Claude Code manages the mqtt-channel-mcp process as MCP subprocess.
+      # Killing it is enough — Claude Code will restart it automatically with the new binary.
+      - pkill -f "{{.BINARY}} --config" || true
+      - echo "✅ VM2 binary updated, MCP process killed — Claude Code will restart it"
+
+  deploy:windows:
+    desc: Cross-compile + copy exe to SharedData (Z:\Homeoffice_KW5\mqtt-cc)
+    deps: [build:windows]
+    vars:
+      DEST: /media/sf_SharedData/Homeoffice_KW5/mqtt-cc/{{.BINARY}}.exe
+    cmds:
+      - cp {{.BINARY}}.exe "{{.DEST}}"
+      - echo "✅ Windows deploy → {{.DEST}}"
+
+  deploy:
+    desc: Build + deploy for Linux and Windows
+    deps: [deploy:linux, deploy:windows]
+
+  clean:
+    desc: Remove build artifacts
+    cmds:
+      - rm -f {{.BINARY}} {{.BINARY}}.exe coverage.out
+
+  run:
+    desc: Run with local config
+    deps: [build]
+    cmds:
+      - ./{{.BINARY}} --config config/local.json
+
+  ping:
+    desc: Run ping/pong test sender
+    deps: [tidy]
+    cmds:
+      - go run test/ping_pong_sender.go {{.CLI_ARGS}}

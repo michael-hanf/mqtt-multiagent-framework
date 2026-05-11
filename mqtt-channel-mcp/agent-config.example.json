@@ -1,0 +1,16 @@
+{
+  "broker": "mqtt://localhost:1883",
+  "role": "builder",
+  "subscribeTopics": [
+    "agents/task/<your-agent-id>",
+    "agents/broadcast/#"
+  ],
+  "responseTopicDefault": "agents/task/<your-agent-id>",
+  "publishTopicPrefix": "agents/response",
+  "clientId": "cc-<role>-<name>",
+  "features": [],
+  "auth": {
+    "username": "",
+    "password": ""
+  }
+}

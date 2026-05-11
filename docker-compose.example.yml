@@ -1,0 +1,36 @@
+version: "3.8"
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"   # MQTT (authenticated)
+      - "8883:8883"   # MQTT over TLS (optional)
+    volumes:
+      - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mosquitto/passwd:/mosquitto/passwd:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+
+volumes:
+  mosquitto_data:
+  mosquitto_log:
+
+# ─────────────────────────────────────────────
+# SETUP (required before first start):
+#
+# 1. Create password file (written directly into ./mosquitto/):
+#    docker run --rm -v $(pwd)/mosquitto:/mosquitto/config eclipse-mosquitto:2 \
+#      mosquitto_passwd -c /mosquitto/config/passwd <your-username>
+#    # Enter a password when prompted — file appears at ./mosquitto/passwd
+#
+# 2. Edit mosquitto/config/mosquitto.conf if needed:
+#    - allow_anonymous false  (already set)
+#    - password_file /mosquitto/passwd  (already set)
+#
+# 3. Update your agent-config.json:
+#    "auth": { "username": "<your-username>", "password": "<your-password>" }
+#
+# ⚠️  WARNING: Do NOT commit passwd or agent configs with real credentials.
+#     Add passwd and *.local.json to your .gitignore.
+# ─────────────────────────────────────────────

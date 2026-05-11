@@ -1,0 +1,26 @@
+# Binaries
+*.exe
+*.exe.bak
+mqtt-channel-mcp/mqtt-channel-mcp
+mqtt-channel-mcp/mqtt-channel-mcp.exe
+
+# Agent configs with credentials — use *.local.json pattern
+*.local.json
+
+# Mosquitto password file (contains hashed credentials)
+mosquitto/passwd
+
+# Internal configs (contain IPs, hostnames, paths)
+config/vm*.json
+config/conni*.json
+
+# Logs
+*.log
+CONVERSATION_LOG.md
+
+# Internal planning docs
+PLAN.md
+
+# OS
+.DS_Store
+Thumbs.db
