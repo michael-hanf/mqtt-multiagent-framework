@@ -115,7 +115,20 @@ Add `mqtt-channel-mcp` as an MCP server in your Claude Code config (`~/.claude.j
 }
 ```
 
-Restart Claude Code. The `mqtt_publish` and `mqtt_query` tools will be available.
+Restart Claude Code — but use the following start command to activate the channel:
+
+```bash
+claude --dangerously-load-development-channels server:mqtt-channel
+```
+
+> ⚠️ **This flag is required.** Without it, the `mqtt-channel` MCP server loads but the
+> `mqtt_publish` and `mqtt_query` tools are not exposed to the agent.
+> The flag must be passed every time Claude Code is started for an agent that uses MQTT.
+
+Tip: add an alias to your shell profile so you don't forget it:
+```bash
+alias claude-agent='claude --dangerously-load-development-channels server:mqtt-channel'
+```
 
 ---
 
