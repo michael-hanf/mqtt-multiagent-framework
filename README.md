@@ -35,6 +35,20 @@ python examples/test-join-protocol.py --broker localhost
 
 See [`docs/infrastructure.md`](docs/infrastructure.md) for broker auth setup and Claude Code integration.
 
+## A note on the Claude Code flag
+
+Starting an agent requires a development flag:
+
+```bash
+claude --dangerously-load-development-channels server:mqtt-channel
+```
+
+This is how Claude Code currently exposes custom MCP channels to agents. The flag works reliably — it's just not a first-class feature yet. We hope Anthropic will make multi-agent channel configuration a proper part of the Claude Code setup experience. Until then, an alias does the job:
+
+```bash
+alias claude-agent='claude --dangerously-load-development-channels server:mqtt-channel'
+```
+
 ## Known Limitations
 
 - **Hub-and-Spoke topology:** All agent communication is routed via the MQTT broker.
