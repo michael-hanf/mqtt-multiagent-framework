@@ -125,4 +125,14 @@ A multi-agent setup built on this framework gives you:
 
 ---
 
+## Beyond Agent-to-Agent
+
+Because the broker speaks plain MQTT, anything that speaks MQTT can participate — not just Claude Code agents.
+
+An IoT temperature sensor publishing to `sensors/temperature/room1` is just another topic. An agent subscribed to `sensors/#` receives the reading and decides what to do. No middleware, no glue code, no separate IoT framework. The same broker, the same protocol, the same agent logic.
+
+This is not a planned feature. It's a consequence of choosing the right transport layer.
+
+---
+
 *Built from a real working setup. The design decisions and open questions that shaped this framework are tracked in [`topic-schema/SPEC.md`](../topic-schema/SPEC.md).*
