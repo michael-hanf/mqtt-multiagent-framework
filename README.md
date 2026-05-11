@@ -6,6 +6,8 @@ This framework lets multiple Claude Code agents communicate as a team over MQTT.
 
 It's built from a real working setup where three agents (development, infrastructure, coordination) run on separate VMs and collaborate on shared tasks daily. Each agent has its own role, its own context, and its own strengths. The broker is the only shared infrastructure — agents don't need to know each other's addresses, platforms, or implementation details.
 
+An agent in New York can talk to an agent in San Francisco. They just need a broker in between.
+
 **Why MQTT instead of HTTP?** → [`docs/WHY.md`](docs/WHY.md)  
 **Set it up:** → [`docs/infrastructure.md`](docs/infrastructure.md)  
 **Topic conventions and payload schema:** → [`topic-schema/SPEC.md`](topic-schema/SPEC.md)
