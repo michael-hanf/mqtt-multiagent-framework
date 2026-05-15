@@ -243,6 +243,7 @@ func (c *Client) Connect(ctx context.Context) error {
 				}); err != nil {
 					log.Printf("[mqtt] heartbeat error: %v", err)
 				}
+
 				cancel()
 			case <-ctx.Done():
 				return
@@ -254,7 +255,9 @@ func (c *Client) Connect(ctx context.Context) error {
 }
 
 // Publish sends a message with optional MQTT 5.0 properties.
-func (c *Client) Publish(ctx context.Context, topic string, payload []byte, props *paho.PublishProperties) error {
+// retain: true publishes a retained message (broker keeps last value, e.g. for presence).
+// qos: 0 = fire-and-forget, 1 = at-least-once (default for tasks/results).
+func (c *Client) Publish(ctx context.Context, topic string, payload []byte, props *paho.PublishProperties, retain bool, qos byte) error {
 	c.mu.Lock()
 	cm := c.cm
 	c.mu.Unlock()
@@ -265,7 +268,8 @@ func (c *Client) Publish(ctx context.Context, topic string, payload []byte, prop
 
 	_, err := cm.Publish(ctx, &paho.Publish{
 		Topic:      topic,
-		QoS:        1,
+		QoS:        qos,
+		Retain:     retain,
 		Payload:    payload,
 		Properties: props,
 	})
@@ -311,15 +315,16 @@ func (c *Client) Query(ctx context.Context, topic string, timeoutSec int) ([]jso
 	subCtx, cancel := context.WithTimeout(ctx, time.Duration(timeoutSec)*time.Second)
 	defer cancel()
 
-	// Only subscribe if not already covered by a permanent topic subscription.
-	// Permanent topics are managed by Connect() and must never be unsubscribed here.
+	// Always (re-)subscribe to trigger re-delivery of retained messages by the broker.
+	// MQTT spec: re-subscribing an existing topic causes the broker to resend retained messages.
+	// For permanent topics: subscribe but do NOT unsubscribe afterward — Connect() owns them.
 	isPermanent := c.isPermanentTopic(topic)
+	if _, err := cm.Subscribe(subCtx, &paho.Subscribe{
+		Subscriptions: []paho.SubscribeOptions{{Topic: topic, QoS: 1}},
+	}); err != nil {
+		return nil, fmt.Errorf("mqtt query subscribe: %w", err)
+	}
 	if !isPermanent {
-		if _, err := cm.Subscribe(subCtx, &paho.Subscribe{
-			Subscriptions: []paho.SubscribeOptions{{Topic: topic, QoS: 1}},
-		}); err != nil {
-			return nil, fmt.Errorf("mqtt query subscribe: %w", err)
-		}
 		defer cm.Unsubscribe(ctx, &paho.Unsubscribe{Topics: []string{topic}})
 	}
 
@@ -328,6 +333,153 @@ func (c *Client) Query(ctx context.Context, topic string, timeoutSec int) ([]jso
 	mu.Lock()
 	defer mu.Unlock()
 	return results, nil
+}
+
+// Request publishes a message and waits for a single response on responseTopic.
+// Returns the response payload or an error if timeout is exceeded.
+// Uses AddOnPublishReceived so permanent router handlers are never affected.
+func (c *Client) Request(ctx context.Context, topic string, payload []byte, props *paho.PublishProperties, retain bool, qos byte, responseTopic string, timeoutSec int) (json.RawMessage, error) {
+	c.mu.Lock()
+	cm := c.cm
+	connected := c.connected
+	c.mu.Unlock()
+	if cm == nil || !connected {
+		return nil, fmt.Errorf("mqtt: not connected")
+	}
+
+	resultCh := make(chan json.RawMessage, 1)
+
+	removeFn := cm.AddOnPublishReceived(func(pr autopaho.PublishReceived) (bool, error) {
+		if pr.Packet.Topic != responseTopic {
+			return false, nil
+		}
+		select {
+		case resultCh <- json.RawMessage(pr.Packet.Payload):
+		default:
+		}
+		return false, nil
+	})
+	defer removeFn()
+
+	// Subscribe to response topic if not already covered by permanent subscriptions
+	if !c.isPermanentTopic(responseTopic) {
+		subCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+		if _, err := cm.Subscribe(subCtx, &paho.Subscribe{
+			Subscriptions: []paho.SubscribeOptions{{Topic: responseTopic, QoS: 1}},
+		}); err != nil {
+			return nil, fmt.Errorf("mqtt request subscribe: %w", err)
+		}
+		defer cm.Unsubscribe(ctx, &paho.Unsubscribe{Topics: []string{responseTopic}})
+	}
+
+	// Set response_topic as MQTT 5.0 property if not already set
+	if props == nil {
+		props = &paho.PublishProperties{}
+	}
+	if props.ResponseTopic == "" {
+		props.ResponseTopic = responseTopic
+	}
+
+	// Publish the request
+	if _, err := cm.Publish(ctx, &paho.Publish{
+		Topic:      topic,
+		QoS:        qos,
+		Retain:     retain,
+		Payload:    payload,
+		Properties: props,
+	}); err != nil {
+		return nil, fmt.Errorf("mqtt request publish: %w", err)
+	}
+
+	// Wait for response or timeout
+	select {
+	case result := <-resultCh:
+		return result, nil
+	case <-time.After(time.Duration(timeoutSec) * time.Second):
+		return nil, fmt.Errorf("timeout: no response within %ds", timeoutSec)
+	case <-ctx.Done():
+		return nil, fmt.Errorf("context cancelled")
+	}
+}
+
+// AgentPresence holds the parsed fields from a retained presence message.
+type AgentPresence struct {
+	ID           string   `json:"id"`
+	Role         string   `json:"role"`
+	Status       string   `json:"status"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	SinceS       int64    `json:"since_s"` // seconds since last presence update
+}
+
+// Who queries agents/presence/# and returns agents currently online.
+func (c *Client) Who(ctx context.Context) ([]AgentPresence, error) {
+	raw, err := c.Query(ctx, "agents/presence/#", 2)
+	if err != nil {
+		return nil, err
+	}
+
+	now := time.Now().UnixMilli()
+	var result []AgentPresence
+	for _, r := range raw {
+		var p struct {
+			From         string   `json:"from"`
+			ClientID     string   `json:"clientId"`
+			Role         string   `json:"role"`
+			Status       string   `json:"status"`
+			Capabilities []string `json:"capabilities"`
+			TS           int64    `json:"ts"`
+		}
+		if err := json.Unmarshal(r, &p); err != nil {
+			continue
+		}
+		if p.Status != "online" {
+			continue
+		}
+		id := p.From
+		if id == "" {
+			id = p.ClientID
+		}
+		sinceS := int64(0)
+		if p.TS > 0 {
+			sinceS = (now - p.TS) / 1000
+		}
+		result = append(result, AgentPresence{
+			ID:           id,
+			Role:         p.Role,
+			Status:       p.Status,
+			Capabilities: p.Capabilities,
+			SinceS:       sinceS,
+		})
+	}
+	return result, nil
+}
+
+// ConnectionStatus holds the current MQTT connection state.
+type ConnectionStatus struct {
+	Connected bool   `json:"connected"`
+	Broker    string `json:"broker"`
+	ClientID  string `json:"client_id"`
+}
+
+// Status returns the current connection state.
+func (c *Client) Status() ConnectionStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return ConnectionStatus{
+		Connected: c.connected,
+		Broker:    c.cfg.Broker,
+		ClientID:  c.cfg.ClientID,
+	}
+}
+
+// Subscriptions returns the list of permanently subscribed topics.
+func (c *Client) Subscriptions() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make([]string, len(c.permanentTopics))
+	copy(result, c.permanentTopics)
+	return result
 }
 
 // heartbeatInterval returns the configured interval or the default of 30s.

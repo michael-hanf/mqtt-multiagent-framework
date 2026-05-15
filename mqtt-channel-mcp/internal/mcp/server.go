@@ -19,11 +19,13 @@ import (
 
 // Message is the structured JSON format exchanged over MQTT.
 type Message struct {
-	Type    string `json:"type"`
-	From    string `json:"from"`
-	Role    string `json:"role"`
-	Payload string `json:"payload"`
-	TS      int64  `json:"ts"`
+	Type          string `json:"type"`
+	From          string `json:"from"`
+	Role          string `json:"role"`
+	Payload       string `json:"payload"`
+	TS            int64  `json:"ts"`
+	ResponseTopic string `json:"response_topic,omitempty"` // N3: included in body for MQTT 3.1.1 compat
+	Re            string `json:"re,omitempty"`             // N3: reply reference ("Re: <subject>")
 }
 
 // notifyJob holds a single MCP notification to be delivered.
@@ -74,8 +76,40 @@ func New(cfg *config.Config) *Server {
 		gomcp.WithString("type", gomcp.Required(), gomcp.Description("Message type: ping, pong, task, result, tunnel_request, tunnel_status")),
 		gomcp.WithString("response_topic", gomcp.Description("MQTT 5.0 response topic for request/response pattern")),
 		gomcp.WithString("correlation_data", gomcp.Description("MQTT 5.0 correlation data for matching responses")),
+		gomcp.WithString("re", gomcp.Description("Reply reference, e.g. 'Re: <original subject>'. Included in JSON body for MQTT 3.1.1 interoperability.")),
+		gomcp.WithBoolean("retain", gomcp.Description("Publish as retained message — broker keeps last value (use for presence updates). Default: false")),
+		gomcp.WithNumber("qos", gomcp.Description("QoS level: 0 = fire-and-forget, 1 = at-least-once (default). Use 0 for logs/status, 1 for tasks/results.")),
 	)
 	s.mcp.AddTool(publishTool, s.handlePublish)
+
+	// Register mqtt_request tool
+	requestTool := gomcp.NewTool("mqtt_request",
+		gomcp.WithDescription("Publish a message and wait for a response — request/reply in one call. Blocks until a response arrives on response_topic or timeout expires."),
+		gomcp.WithString("topic", gomcp.Required(), gomcp.Description("MQTT topic to publish to")),
+		gomcp.WithString("payload", gomcp.Required(), gomcp.Description("Message payload (string or JSON)")),
+		gomcp.WithString("type", gomcp.Required(), gomcp.Description("Message type: task, ping, etc.")),
+		gomcp.WithString("response_topic", gomcp.Description("Topic to wait for response on. Defaults to agent's own task topic.")),
+		gomcp.WithNumber("timeout", gomcp.Description("Seconds to wait for response (default: 10)")),
+	)
+	s.mcp.AddTool(requestTool, s.handleRequest)
+
+	// Register mqtt_who tool
+	whoTool := gomcp.NewTool("mqtt_who",
+		gomcp.WithDescription("Return all agents currently online (retained presence). Faster than mqtt_query + manual filtering."),
+	)
+	s.mcp.AddTool(whoTool, s.handleWho)
+
+	// Register mqtt_status tool
+	statusTool := gomcp.NewTool("mqtt_status",
+		gomcp.WithDescription("Return current MQTT connection status: connected/disconnected, broker URL, client ID."),
+	)
+	s.mcp.AddTool(statusTool, s.handleStatus)
+
+	// Register mqtt_subscriptions tool
+	subscriptionsTool := gomcp.NewTool("mqtt_subscriptions",
+		gomcp.WithDescription("Return the list of topics this agent is currently subscribed to."),
+	)
+	s.mcp.AddTool(subscriptionsTool, s.handleSubscriptions)
 
 	// Register mqtt_query tool
 	queryTool := gomcp.NewTool("mqtt_query",
@@ -220,28 +254,36 @@ func (s *Server) handlePublish(ctx context.Context, req gomcp.CallToolRequest) (
 	msgType := req.GetString("type", "task")
 	responseTopic := req.GetString("response_topic", "")
 	correlationData := req.GetString("correlation_data", "")
+	re := req.GetString("re", "")
+	retain := req.GetBool("retain", false)
+	qos := byte(req.GetFloat("qos", 1))
+	if qos > 1 {
+		qos = 1
+	}
 
 	if topic == "" {
 		return gomcp.NewToolResultError("topic is required"), nil
-	}
-
-	msg := Message{
-		Type:    msgType,
-		From:    s.cfg.ClientID,
-		Role:    s.cfg.Role,
-		Payload: payloadStr,
-		TS:      time.Now().UnixMilli(),
-	}
-
-	data, err := json.Marshal(msg)
-	if err != nil {
-		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
 	}
 
 	// Auto-set response_topic from config if not explicitly provided
 	if responseTopic == "" && s.cfg.ResponseTopicDefault != "" {
 		responseTopic = s.cfg.ResponseTopicDefault
 		log.Printf("[mcp] auto-set response_topic=%s from config", responseTopic)
+	}
+
+	msg := Message{
+		Type:          msgType,
+		From:          s.cfg.ClientID,
+		Role:          s.cfg.Role,
+		Payload:       payloadStr,
+		TS:            time.Now().UnixMilli(),
+		ResponseTopic: responseTopic, // N3: also in body for MQTT 3.1.1 compat
+		Re:            re,
+	}
+
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
 	}
 
 	// Build MQTT 5.0 publish properties
@@ -256,12 +298,109 @@ func (s *Server) handlePublish(ctx context.Context, req gomcp.CallToolRequest) (
 		}
 	}
 
-	if err := s.mqtt.Publish(ctx, topic, data, props); err != nil {
+	if err := s.mqtt.Publish(ctx, topic, data, props, retain, qos); err != nil {
 		return gomcp.NewToolResultError(fmt.Sprintf("mqtt publish: %v", err)), nil
 	}
 
-	log.Printf("[mcp] published: topic=%s type=%s", topic, msgType)
-	return gomcp.NewToolResultText(fmt.Sprintf("Published to %s (type=%s, correlation=%s)", topic, msgType, correlationData)), nil
+	log.Printf("[mcp] published: topic=%s type=%s retain=%v qos=%d", topic, msgType, retain, qos)
+	return gomcp.NewToolResultText(fmt.Sprintf("Published to %s (type=%s, retain=%v, qos=%d)", topic, msgType, retain, qos)), nil
+}
+
+// handleRequest handles the mqtt_request tool call — publish + wait for response.
+func (s *Server) handleRequest(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+	if s.mqtt == nil {
+		return gomcp.NewToolResultError("MQTT client not connected"), nil
+	}
+
+	topic := req.GetString("topic", "")
+	payloadStr := req.GetString("payload", "")
+	msgType := req.GetString("type", "task")
+	timeoutSec := int(req.GetFloat("timeout", 10))
+	if timeoutSec < 1 {
+		timeoutSec = 10
+	}
+
+	if topic == "" {
+		return gomcp.NewToolResultError("topic is required"), nil
+	}
+
+	// Default response_topic: agent's own task topic
+	responseTopic := req.GetString("response_topic", "")
+	if responseTopic == "" {
+		responseTopic = s.cfg.ResponseTopicDefault
+	}
+	if responseTopic == "" {
+		return gomcp.NewToolResultError("response_topic is required (or set responseTopicDefault in config)"), nil
+	}
+
+	msg := Message{
+		Type:          msgType,
+		From:          s.cfg.ClientID,
+		Role:          s.cfg.Role,
+		Payload:       payloadStr,
+		TS:            time.Now().UnixMilli(),
+		ResponseTopic: responseTopic, // N3: also in body for MQTT 3.1.1 compat
+	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
+	}
+
+	log.Printf("[mcp] request: topic=%s response_topic=%s timeout=%ds", topic, responseTopic, timeoutSec)
+
+	result, err := s.mqtt.Request(ctx, topic, data, nil, false, 1, responseTopic, timeoutSec)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("mqtt request: %v", err)), nil
+	}
+
+	log.Printf("[mcp] request completed: topic=%s", topic)
+	return gomcp.NewToolResultText(string(result)), nil
+}
+
+// handleWho returns all currently online agents via retained presence.
+func (s *Server) handleWho(ctx context.Context, _ gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+	if s.mqtt == nil {
+		return gomcp.NewToolResultError("MQTT client not connected"), nil
+	}
+	agents, err := s.mqtt.Who(ctx)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("mqtt who: %v", err)), nil
+	}
+	if agents == nil {
+		agents = []mqttclient.AgentPresence{}
+	}
+	data, err := json.Marshal(agents)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
+	}
+	log.Printf("[mcp] who: %d agents online", len(agents))
+	return gomcp.NewToolResultText(string(data)), nil
+}
+
+// handleStatus returns the current MQTT connection state.
+func (s *Server) handleStatus(ctx context.Context, _ gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+	if s.mqtt == nil {
+		return gomcp.NewToolResultError("MQTT client not initialized"), nil
+	}
+	status := s.mqtt.Status()
+	data, err := json.Marshal(status)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
+	}
+	return gomcp.NewToolResultText(string(data)), nil
+}
+
+// handleSubscriptions returns the list of active topic subscriptions.
+func (s *Server) handleSubscriptions(_ context.Context, _ gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
+	if s.mqtt == nil {
+		return gomcp.NewToolResultError("MQTT client not initialized"), nil
+	}
+	subs := s.mqtt.Subscriptions()
+	data, err := json.Marshal(subs)
+	if err != nil {
+		return gomcp.NewToolResultError(fmt.Sprintf("json marshal: %v", err)), nil
+	}
+	return gomcp.NewToolResultText(string(data)), nil
 }
 
 // handleQuery handles the mqtt_query tool call from Claude Code.

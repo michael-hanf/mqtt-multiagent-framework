@@ -66,6 +66,12 @@ func applyEnvOverrides(cfg *Config) {
 	if v := os.Getenv("MQTT_CLIENT_ID"); v != "" {
 		cfg.ClientID = v
 	}
+	if v := os.Getenv("MQTT_USERNAME"); v != "" {
+		cfg.Auth.Username = v
+	}
+	if v := os.Getenv("MQTT_PASSWORD"); v != "" {
+		cfg.Auth.Password = v
+	}
 }
 
 func validate(cfg *Config) error {
