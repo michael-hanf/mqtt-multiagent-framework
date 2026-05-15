@@ -244,6 +244,21 @@ func (s *Server) HandleMQTTMessage(topic string, payload []byte, props *paho.Pub
 }
 
 // handlePublish handles the mqtt_publish tool call from Claude Code.
+// checkTopicAllowed returns an error string if allowedPublishPrefixes is configured
+// and the given topic does not start with any of the allowed prefixes.
+// Returns "" when the topic is permitted.
+func (s *Server) checkTopicAllowed(topic string) string {
+	if len(s.cfg.AllowedPublishPrefixes) == 0 {
+		return "" // no restriction configured
+	}
+	for _, prefix := range s.cfg.AllowedPublishPrefixes {
+		if strings.HasPrefix(topic, prefix) {
+			return ""
+		}
+	}
+	return fmt.Sprintf("topic %q is not in allowedPublishPrefixes — rejected by agent policy", topic)
+}
+
 func (s *Server) handlePublish(ctx context.Context, req gomcp.CallToolRequest) (*gomcp.CallToolResult, error) {
 	if s.mqtt == nil {
 		return gomcp.NewToolResultError("MQTT client not connected"), nil
@@ -263,6 +278,9 @@ func (s *Server) handlePublish(ctx context.Context, req gomcp.CallToolRequest) (
 
 	if topic == "" {
 		return gomcp.NewToolResultError("topic is required"), nil
+	}
+	if errMsg := s.checkTopicAllowed(topic); errMsg != "" {
+		return gomcp.NewToolResultError(errMsg), nil
 	}
 
 	// Auto-set response_topic from config if not explicitly provided
@@ -322,6 +340,9 @@ func (s *Server) handleRequest(ctx context.Context, req gomcp.CallToolRequest) (
 
 	if topic == "" {
 		return gomcp.NewToolResultError("topic is required"), nil
+	}
+	if errMsg := s.checkTopicAllowed(topic); errMsg != "" {
+		return gomcp.NewToolResultError(errMsg), nil
 	}
 
 	// Default response_topic: agent's own task topic
@@ -412,6 +433,9 @@ func (s *Server) handleQuery(ctx context.Context, req gomcp.CallToolRequest) (*g
 	topic := req.GetString("topic", "")
 	if topic == "" {
 		return gomcp.NewToolResultError("topic is required"), nil
+	}
+	if errMsg := s.checkTopicAllowed(topic); errMsg != "" {
+		return gomcp.NewToolResultError(errMsg), nil
 	}
 	timeoutSec := int(req.GetFloat("timeout", 2))
 	if timeoutSec < 1 {

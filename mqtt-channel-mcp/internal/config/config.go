@@ -30,6 +30,10 @@ type Config struct {
 	Log                  LogConfig `json:"log"`
 	HeartbeatInterval    int       `json:"heartbeatInterval"` // seconds, 0 = default (30s)
 	Features             []string  `json:"features,omitempty"` // active capabilities, e.g. ["mqtt-mcp", "obsidian-vault"]
+	// AllowedPublishPrefixes restricts mqtt_publish/mqtt_request/mqtt_query to topics
+	// that start with one of these prefixes. Empty = no restriction (default).
+	// Example: ["agents/task/vera", "agents/presence/vera", "agents/broadcast/"]
+	AllowedPublishPrefixes []string `json:"allowedPublishPrefixes,omitempty"`
 }
 
 // Load reads config from a JSON file and applies env-var overrides.

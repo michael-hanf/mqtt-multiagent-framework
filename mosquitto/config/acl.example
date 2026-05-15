@@ -1,0 +1,47 @@
+# Mosquitto Topic ACL — example for MQTT Multi-Agent Framework
+#
+# Copy to acl and reference in mosquitto.conf:
+#   acl_file /mosquitto/config/acl
+#
+# Restart after changes: docker compose restart mosquitto
+#
+# Each agent gets:
+#   - readwrite on its own task topic
+#   - readwrite on its own presence topic
+#   - read on all other presence topics (discovery)
+#   - read on broadcast (receive team messages)
+#   - readwrite on broadcast/discussion (participate in team chat)
+#   - read on agents/help/# (receive help requests)
+#
+# Replace <agentid> with the actual agent id (e.g. vera, conni, brix).
+
+# ── Agent: vera ──────────────────────────────────────────────────────────────
+user vera
+topic readwrite agents/task/vera
+topic readwrite agents/presence/vera
+topic read      agents/presence/#
+topic read      agents/broadcast/#
+topic readwrite agents/broadcast/discussion
+topic read      agents/help/#
+
+# ── Agent: conni ─────────────────────────────────────────────────────────────
+user conni
+topic readwrite agents/task/conni
+topic readwrite agents/presence/conni
+topic read      agents/presence/#
+topic read      agents/broadcast/#
+topic readwrite agents/broadcast/discussion
+topic read      agents/help/#
+
+# ── Agent: brix ──────────────────────────────────────────────────────────────
+user brix
+topic readwrite agents/task/brix
+topic readwrite agents/presence/brix
+topic read      agents/presence/#
+topic read      agents/broadcast/#
+topic readwrite agents/broadcast/discussion
+topic read      agents/help/#
+
+# ── Human operator ───────────────────────────────────────────────────────────
+user michael
+topic readwrite #
