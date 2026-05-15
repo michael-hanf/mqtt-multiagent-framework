@@ -59,8 +59,9 @@ Add to Claude Code MCP config (`~/.claude.json`):
 | `MQTT_BROKER` | `broker` |
 | `MQTT_ROLE` | `role` |
 | `MQTT_CLIENT_ID` | `clientId` |
-
-> Note: `MQTT_USERNAME` / `MQTT_PASSWORD` are not supported yet — credentials must be in the config file.
+| `MQTT_SUBSCRIBE_TOPICS` | `subscribeTopics` (comma-separated) |
+| `MQTT_USERNAME` | `auth.username` |
+| `MQTT_PASSWORD` | `auth.password` |
 
 ## Security
 

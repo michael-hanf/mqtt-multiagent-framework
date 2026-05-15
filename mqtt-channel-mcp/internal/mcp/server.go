@@ -443,9 +443,7 @@ func (s *Server) handleQuery(ctx context.Context, req gomcp.CallToolRequest) (*g
 	if topic == "" {
 		return gomcp.NewToolResultError("topic is required"), nil
 	}
-	if errMsg := s.checkTopicAllowed(topic); errMsg != "" {
-		return gomcp.NewToolResultError(errMsg), nil
-	}
+	// mqtt_query is a read-only operation — allowedPublishPrefixes does not apply.
 	timeoutSec := int(req.GetFloat("timeout", 2))
 	if timeoutSec < 1 {
 		timeoutSec = 2
