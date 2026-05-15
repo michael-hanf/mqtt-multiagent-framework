@@ -43,5 +43,8 @@ topic readwrite agents/broadcast/discussion
 topic read      agents/help/#
 
 # ── Human operator ───────────────────────────────────────────────────────────
+# ⚠️ Full access — only for a dedicated admin account, never for agent credentials.
+#    If this user's password leaks, the entire broker is open.
+#    Consider restricting to specific topics in production.
 user michael
 topic readwrite #

@@ -33,6 +33,10 @@ type Config struct {
 	// CAFile is the path to a PEM-encoded CA certificate for TLS broker connections (mqtts://).
 	// Only needed for self-signed or private CA certificates. Leave empty for system root CAs.
 	CAFile string `json:"caFile,omitempty"`
+	// AllowedPublishPrefixes restricts mqtt_publish/mqtt_request/mqtt_query to topics
+	// that start with one of these prefixes. Empty = no restriction (default).
+	// Example: ["agents/task/vera", "agents/presence/vera", "agents/broadcast/"]
+	AllowedPublishPrefixes []string `json:"allowedPublishPrefixes,omitempty"`
 }
 
 // Load reads config from a JSON file and applies env-var overrides.

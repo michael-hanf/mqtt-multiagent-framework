@@ -5,16 +5,18 @@ services:
     image: eclipse-mosquitto:2
     ports:
       # ⚠️ Plain-text MQTT — credentials and payloads are unencrypted on the wire.
-      # Acceptable on a trusted local network (e.g. VirtualBox host-only, LAN).
-      # For internet-facing or untrusted networks: disable port 1883 and enable TLS on 8883 instead.
-      # See docs/security.md for certificate setup.
+      # Acceptable on a trusted local network. For network/internet use: enable 8883 TLS below.
       - "1883:1883"             # MQTT plain-text
-      # - "8883:8883"           # MQTT over TLS — uncomment and configure certs (see docs/security.md)
+      # - "8883:8883"           # MQTT over TLS — uncomment together with TLS volumes below
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/passwd:/mosquitto/passwd:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
+      # TLS: uncomment when enabling port 8883. Generate certs first (see docs/security.md).
+      # - ./mosquitto/certs:/mosquitto/certs:ro
+      # ACL: uncomment after copying acl.example to acl and enabling acl_file in mosquitto.conf
+      # - ./mosquitto/config/acl:/mosquitto/config/acl:ro
 
 volumes:
   mosquitto_data:
