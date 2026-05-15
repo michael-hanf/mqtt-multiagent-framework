@@ -10,6 +10,13 @@ mqtt-channel-mcp/mqtt-channel-mcp.exe
 # Mosquitto password file (contains hashed credentials)
 mosquitto/passwd
 
+# TLS certificates — generate locally, never commit
+mosquitto/certs/*.key
+mosquitto/certs/*.crt
+mosquitto/certs/*.csr
+mosquitto/certs/*.srl
+mosquitto/certs/san.ext
+
 # Internal configs (contain IPs, hostnames, paths)
 config/vm*.json
 config/conni*.json
