@@ -4,10 +4,12 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     ports:
-      # ⚠️ Single-machine / localhost only: bind to loopback so port is NOT reachable from the network.
-      # For multi-machine setups remove "127.0.0.1:" AND enable TLS on 8883 (see docs/security.md).
-      - "127.0.0.1:1883:1883"   # MQTT plain-text — localhost only
-      # - "0.0.0.0:8883:8883"  # MQTT over TLS — uncomment for network use (requires certs)
+      # ⚠️ Plain-text MQTT — credentials and payloads are unencrypted on the wire.
+      # Acceptable on a trusted local network (e.g. VirtualBox host-only, LAN).
+      # For internet-facing or untrusted networks: disable port 1883 and enable TLS on 8883 instead.
+      # See docs/security.md for certificate setup.
+      - "1883:1883"             # MQTT plain-text
+      # - "8883:8883"           # MQTT over TLS — uncomment and configure certs (see docs/security.md)
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - ./mosquitto/passwd:/mosquitto/passwd:ro
