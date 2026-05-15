@@ -12,5 +12,10 @@
   "auth": {
     "username": "",
     "password": ""
-  }
+  },
+  "allowedPublishPrefixes": [
+    "agents/task/<your-agent-id>",
+    "agents/presence/<your-agent-id>",
+    "agents/broadcast/"
+  ]
 }

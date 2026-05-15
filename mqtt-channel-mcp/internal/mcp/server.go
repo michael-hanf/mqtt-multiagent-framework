@@ -245,14 +245,23 @@ func (s *Server) HandleMQTTMessage(topic string, payload []byte, props *paho.Pub
 
 // handlePublish handles the mqtt_publish tool call from Claude Code.
 // checkTopicAllowed returns an error string if allowedPublishPrefixes is configured
-// and the given topic does not start with any of the allowed prefixes.
+// and the given topic does not match any allowed prefix.
+// Matching rules (prevents agents/task/vera from matching agents/task/veracity):
+//   - exact match: topic == prefix
+//   - subtopic match: topic starts with prefix+"/" (boundary enforced at '/')
+//
 // Returns "" when the topic is permitted.
 func (s *Server) checkTopicAllowed(topic string) string {
 	if len(s.cfg.AllowedPublishPrefixes) == 0 {
 		return "" // no restriction configured
 	}
 	for _, prefix := range s.cfg.AllowedPublishPrefixes {
-		if strings.HasPrefix(topic, prefix) {
+		if topic == prefix {
+			return ""
+		}
+		// Strip trailing slash from prefix before appending — avoids double slash.
+		base := strings.TrimRight(prefix, "/")
+		if strings.HasPrefix(topic, base+"/") {
 			return ""
 		}
 	}
