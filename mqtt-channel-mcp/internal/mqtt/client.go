@@ -2,10 +2,13 @@ package mqtt
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/url"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -128,8 +131,31 @@ func (c *Client) Connect(ctx context.Context) error {
 		return p
 	}
 
+	// TLS: build config when broker scheme is mqtts:// or tls://.
+	// CAFile in config is optional — if set, the CA cert is loaded for server verification.
+	// If CAFile is empty and scheme is mqtts://, system root CAs are used.
+	var tlsCfg *tls.Config
+	if brokerURL.Scheme == "mqtts" || brokerURL.Scheme == "tls" {
+		tlsCfg = &tls.Config{MinVersion: tls.VersionTLS12}
+		if c.cfg.CAFile != "" {
+			caPEM, err := os.ReadFile(c.cfg.CAFile)
+			if err != nil {
+				return fmt.Errorf("mqtt: reading CAFile %q: %w", c.cfg.CAFile, err)
+			}
+			pool := x509.NewCertPool()
+			if !pool.AppendCertsFromPEM(caPEM) {
+				return fmt.Errorf("mqtt: no valid certificate found in CAFile %q", c.cfg.CAFile)
+			}
+			tlsCfg.RootCAs = pool
+			log.Printf("[mqtt] TLS enabled, CA from %s", c.cfg.CAFile)
+		} else {
+			log.Printf("[mqtt] TLS enabled, using system root CAs")
+		}
+	}
+
 	cliCfg := autopaho.ClientConfig{
 		BrokerUrls:                    []*url.URL{brokerURL},
+		TlsCfg:                        tlsCfg,
 		KeepAlive:                     30,
 		CleanStartOnInitialConnection: true,
 		SessionExpiryInterval:         3600,
