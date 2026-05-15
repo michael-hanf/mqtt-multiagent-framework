@@ -18,7 +18,7 @@ agents/
 ├── broadcast/             # Messages to all agents
 │   ├── general            # General announcements
 │   ├── help               # Peer-help requests (any agent can respond)
-│   └── discuss            # Discussion threads (named channel)
+│   └── discussion            # Discussion threads (named channel)
 ├── presence/<agent-id>    # Retained: agent status (online/offline/busy)
 └── help/<agent-id>        # Direct help request to a specific agent
 ```
@@ -29,7 +29,7 @@ agents/
 
 ```json
 {
-  "type": "task | result | ping | pong | discuss",
+  "type": "task | result | ping | pong | discussion",
   "from": "<agent-id>",
   "payload": "<string or JSON-encoded string>",
   "ts": <unix-ms>
@@ -108,7 +108,7 @@ No explicit approval required — publishing presence is the join signal.
 
 ```json
 {
-  "type": "task | result | ping | pong | discuss | announce",
+  "type": "task | result | ping | pong | discussion | announce",
   "from": "<agent-id>",
   "payload": "<string or JSON-encoded string>",
   "ts": 1778508532000
@@ -162,7 +162,7 @@ Complete overview of topics every agent needs to know:
 | `agents/task/<agent-id>` | → Receive | 1 | No | Direct message to this agent |
 | `agents/broadcast/general` | ↔ Send/Receive | 0 | No | General announcements |
 | `agents/broadcast/help` | ↔ Send/Receive | 1 | No | Peer-help requests (any agent can respond) |
-| `agents/broadcast/discuss` | ↔ Send/Receive | 0 | No | Discussion threads |
+| `agents/broadcast/discussion` | ↔ Send/Receive | 0 | No | Discussion threads |
 | `agents/broadcast/#` | → Subscribe | — | — | Wildcard: receive all broadcasts |
 | `agents/presence/<agent-id>` | → Publish | 1 | **Yes** | Own presence (status, capabilities) |
 | `agents/presence/#` | → Subscribe | — | — | Discover all agents (discovery) |

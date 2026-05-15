@@ -10,7 +10,7 @@ Everything you need to run the MQTT Multi-Agent Framework from scratch.
 |---|---|---|
 | Docker + Docker Compose | any recent | For the broker |
 | Python | 3.9+ | For examples and test scripts |
-| Go | 1.21+ | Only if building mqtt-channel-mcp from source |
+| Go | 1.21+ (1.25+ recommended) | Only if building mqtt-channel-mcp from source |
 | Claude Code | latest | The agent runtime |
 
 ---
@@ -92,10 +92,18 @@ cp mqtt-channel-mcp/agent-config.example.json my-agent-config.json
 ```
 
 > ⚠️ **Never commit your config file with real credentials.**
-> Credentials must be in the JSON config file — there are no `MQTT_USERNAME`/`MQTT_PASSWORD` env-var overrides (yet).
 > Recommended pattern: name your config `agent-config.local.json` and add `*.local.json` to `.gitignore`.
 >
-> Available env-var overrides: `MQTT_BROKER`, `MQTT_ROLE`, `MQTT_CLIENT_ID`.
+> All config fields can be overridden via environment variables:
+>
+> | Variable | Overrides |
+> |---|---|
+> | `MQTT_BROKER` | `broker` |
+> | `MQTT_ROLE` | `role` |
+> | `MQTT_CLIENT_ID` | `clientId` |
+> | `MQTT_SUBSCRIBE_TOPICS` | `subscribeTopics` (comma-separated) |
+> | `MQTT_USERNAME` | `auth.username` |
+> | `MQTT_PASSWORD` | `auth.password` |
 
 ---
 
@@ -174,9 +182,50 @@ To enable encrypted connections on port 8883:
 1. Generate or obtain certificates (`ca.crt`, `server.crt`, `server.key`)
 2. Place them in `mosquitto/certs/`
 3. Uncomment the TLS section in `mosquitto/config/mosquitto.conf`
-4. Update your agent config: `"broker": "mqtts://localhost:8883"`
+4. Uncomment the `certs` volume mount and port `8883` in `docker-compose.example.yml`
+5. Update your agent config: `"broker": "mqtts://localhost:8883"`
 
 For local development, [mkcert](https://github.com/FiloSottile/mkcert) generates trusted local certificates in seconds.
+
+**Self-signed CA:** If you use a self-signed CA (e.g. generated with `openssl`), the client needs to verify the server certificate. Add the `caFile` option to your agent config:
+
+```json
+{
+  "broker": "mqtts://your-broker-host:8883",
+  "caFile": "/path/to/ca.crt",
+  ...
+}
+```
+
+Without `caFile`, TLS connections to a self-signed broker will fail certificate verification.
+
+---
+
+## Agent-Side Topic Restrictions (`allowedPublishPrefixes`)
+
+The `allowedPublishPrefixes` config field restricts which MQTT topics the agent is allowed to publish to. This is enforced by `mqtt-channel-mcp` before the message reaches the broker — independent of broker-level ACLs.
+
+**Config field:** optional. When omitted or empty, no restriction is applied.
+
+**Matching rules:** a publish is allowed if the target topic either:
+- exactly matches one of the listed prefixes, or
+- starts with a listed prefix followed by `/`
+
+**Example:**
+
+```json
+{
+  "allowedPublishPrefixes": [
+    "agents/task/myagent",
+    "agents/presence/myagent",
+    "agents/broadcast/"
+  ]
+}
+```
+
+With this config the agent can publish to `agents/task/myagent`, `agents/presence/myagent`, and any topic under `agents/broadcast/` (e.g. `agents/broadcast/general`), but not to `agents/task/otheragent` or other arbitrary topics.
+
+> Combine with broker-level ACLs (see `docs/security.md`) for defence-in-depth.
 
 ---
 
