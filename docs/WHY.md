@@ -48,18 +48,17 @@ The broker handles routing. Agents only know topics, not each other's addresses.
 
 ## The Architecture in Practice
 
-```
-┌─────────────────────────────────────────────────┐
-│                  MQTT Broker                     │
-│                                                  │
-│  agents/task/{id}      ← direct messages        │
-│  agents/broadcast/#    ← team-wide              │
-│  agents/presence/{id}  ← retained, discovery    │
-│  agents/discuss/{topic}← async discussion       │
-└─────────────────────────────────────────────────┘
-        ↑              ↑              ↑
-    Agent A         Agent B        Agent C
-  (any platform)  (any platform) (any platform)
+```mermaid
+graph TB
+    Broker["🗄️ MQTT Broker\n───────────────────────────\nagents/task/{id} — direct\nagents/broadcast/# — team-wide\nagents/presence/{id} — discovery\nagents/discuss/{topic} — async"]
+
+    A["Agent A\n(any platform)"]
+    B["Agent B\n(any platform)"]
+    C["Agent C\n(any platform)"]
+
+    A <--> Broker
+    B <--> Broker
+    C <--> Broker
 ```
 
 **Loose coupling by design.** Agent A publishes a task. Whoever is subscribed to that topic receives it. Agent A doesn't need to know if Agent B is online, what platform it runs on, or how it's implemented.
