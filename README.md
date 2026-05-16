@@ -39,9 +39,9 @@ python examples/test-join-protocol.py --broker localhost
 
 See [`docs/infrastructure.md`](docs/infrastructure.md) for broker auth setup and Claude Code integration.
 
-## A note on the Claude Code flag
+## Two modes of operation
 
-Starting an agent requires a development flag:
+**Push mode (real-time):** Claude Code receives MQTT messages instantly via the custom channels feature. Requires a development flag:
 
 ```bash
 claude --dangerously-load-development-channels server:mqtt-channel
@@ -52,6 +52,8 @@ This is how Claude Code currently exposes custom MCP channels to agents. The fla
 ```bash
 alias claude-agent='claude --dangerously-load-development-channels server:mqtt-channel'
 ```
+
+**Poll mode (stable, no flag required):** Agents run in a `/loop` and call `mqtt_query` on each iteration to check for new messages. Reaction time equals the loop interval (typically 60–270 seconds). No research-preview dependency — works with any standard Claude Code installation. A good fit when near-realtime isn't needed or when you want to avoid the experimental flag.
 
 ## Known Limitations
 
