@@ -15,6 +15,7 @@ Pass criteria (all must succeed within timeout):
 
 Usage:
     python test-join-protocol.py [--broker localhost] [--timeout 10]
+    python test-join-protocol.py --broker localhost --username myuser --password mypass
 """
 
 import argparse
@@ -52,8 +53,10 @@ def pub(client, topic, payload, retain=False, qos=1):
 
 # ── JOINER ────────────────────────────────────────────────────────────────────
 
-def make_joiner(_broker, _port):
+def make_joiner(_broker, _port, username=None, password=None):
     c = mqtt.Client(client_id=JOINER_ID, protocol=mqtt.MQTTv5)
+    if username:
+        c.username_pw_set(username, password)
     c.will_set(
         f"agents/presence/{JOINER_ID}",
         json.dumps({"from": JOINER_ID, "status": "offline", "ts": 0}),
@@ -99,8 +102,10 @@ def make_joiner(_broker, _port):
 
 # ── SENDER ────────────────────────────────────────────────────────────────────
 
-def make_sender(_broker, _port):
+def make_sender(_broker, _port, username=None, password=None):
     c = mqtt.Client(client_id=SENDER_ID, protocol=mqtt.MQTTv5)
+    if username:
+        c.username_pw_set(username, password)
 
     def on_connect(client, _ud, _flags, rc, _props=None):
         if rc != 0:
@@ -140,14 +145,15 @@ def make_sender(_broker, _port):
 
 # ── Test runner ───────────────────────────────────────────────────────────────
 
-def run_test(broker, port, timeout):
+def run_test(broker, port, timeout, username=None, password=None):
     print(f"\nJoin Protocol End-to-End Test")
     print(f"Broker  : {broker}:{port}")
+    print(f"Auth    : {'yes' if username else 'anonymous'}")
     print(f"Timeout : {timeout}s per check")
     print(f"{'─'*50}")
 
-    joiner = make_joiner(broker, port)
-    sender = make_sender(broker, port)
+    joiner = make_joiner(broker, port, username, password)
+    sender = make_sender(broker, port, username, password)
 
     joiner.connect(broker, port, keepalive=30)
     sender.connect(broker, port, keepalive=30)
@@ -187,11 +193,15 @@ def run_test(broker, port, timeout):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--broker",  default="localhost")
-    parser.add_argument("--port",    default=1883, type=int)
-    parser.add_argument("--timeout", default=10,   type=int,
+    parser.add_argument("--broker",   default="localhost")
+    parser.add_argument("--port",     default=1883, type=int)
+    parser.add_argument("--timeout",  default=10,   type=int,
                         help="Seconds to wait per check (default: 10)")
+    parser.add_argument("--username", default=None,
+                        help="MQTT username (optional, for brokers with auth)")
+    parser.add_argument("--password", default=None,
+                        help="MQTT password (optional, for brokers with auth)")
     args = parser.parse_args()
 
-    success = run_test(args.broker, args.port, args.timeout)
+    success = run_test(args.broker, args.port, args.timeout, args.username, args.password)
     sys.exit(0 if success else 1)

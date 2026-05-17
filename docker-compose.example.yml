@@ -10,7 +10,8 @@ services:
       # - "8883:8883"           # MQTT over TLS — uncomment together with TLS volumes below
     volumes:
       - ./mosquitto/config/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ./mosquitto/passwd:/mosquitto/passwd:ro
+      # Auth: uncomment after creating a password file (see SETUP below)
+      # - ./mosquitto/passwd:/mosquitto/passwd:ro
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
       # TLS: uncomment when enabling port 8883. Generate certs first (see docs/security.md).
@@ -23,18 +24,26 @@ volumes:
   mosquitto_log:
 
 # ─────────────────────────────────────────────
-# SETUP (required before first start):
+# QUICK START (no setup required):
+#   docker compose -f docker-compose.example.yml up -d
 #
-# 1. Create password file (written directly into ./mosquitto/):
+# The broker starts with anonymous access enabled — no password file needed.
+# This is fine for local testing on a trusted network.
+#
+# ADDING AUTH (recommended for production):
+#
+# 1. Create password file:
 #    docker run --rm -v $(pwd)/mosquitto:/mosquitto/config eclipse-mosquitto:2 \
 #      mosquitto_passwd -c /mosquitto/config/passwd <your-username>
-#    # Enter a password when prompted — file appears at ./mosquitto/passwd
 #
-# 2. Edit mosquitto/config/mosquitto.conf if needed:
-#    - allow_anonymous false  (already set)
-#    - password_file /mosquitto/passwd  (already set)
+# 2. In mosquitto/config/mosquitto.conf:
+#    - set allow_anonymous false
+#    - uncomment password_file /mosquitto/passwd
 #
-# 3. Update your agent-config.json:
+# 3. In docker-compose.example.yml:
+#    - uncomment the passwd volume mount above
+#
+# 4. Update your agent-config.json:
 #    "auth": { "username": "<your-username>", "password": "<your-password>" }
 #
 # ⚠️  WARNING: Do NOT commit passwd or agent configs with real credentials.
